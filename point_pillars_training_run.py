@@ -12,8 +12,8 @@ from readers import KittiDataReader
 
 tf.get_logger().setLevel("ERROR")
 
-DATA_ROOT = "../training"  # TODO make main arg
-MODEL_ROOT = "./logs"
+DATA_ROOT = "kitti"  # TODO make main arg
+MODEL_ROOT = "model"
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     params = Parameters()
 
     pillar_net = build_point_pillar_graph(params)
-    pillar_net.load_weights(os.path.join(MODEL_ROOT, "model.h5"))
+    pillar_net.load_weights(os.path.join(MODEL_ROOT, "model_pretrained.h5"))
 
     loss = PointPillarNetworkLoss(params)
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         np.round(params.iters_to_decay / params.batch_size * int(np.ceil(float(len(label_files)) / params.batch_size))))
     callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
-        tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(log_dir, "model.h5"),
+        tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(log_dir, "model_pretrained.h5"),
                                            monitor='val_loss', save_best_only=True),
         tf.keras.callbacks.LearningRateScheduler(
             lambda epoch, lr: lr * 0.8 if ((epoch % epoch_to_decay == 0) and (epoch != 0)) else lr, verbose=True),
