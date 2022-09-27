@@ -16,7 +16,7 @@ class PointPillarsTest(unittest.TestCase):
         assert self.arr.shape == (100000, 4)
 
     def test_pillar_creation(self):
-        pillars, indices = createPillars(self.arr, 100, 12000, 0.16, 0.16, 0, 80.64, -40.32, 40.32, -3, 1, True)
+        pillars, indices = createPillars(self.arr, 100, 12000, 0.16, 0.16, 0, 80.64, -40.32, 40.32, -3, 1, True, 3)
 
         assert pillars.shape == (1, 12000, 100, 7)
         assert pillars.dtype == np.float32
@@ -46,6 +46,7 @@ class PointPillarsTest(unittest.TestCase):
                                      np.array([0, 90], dtype=np.float32),
                                      0.5,
                                      0.4,
+                                     0.87,
                                      10,
                                      2,
                                      0.1,
