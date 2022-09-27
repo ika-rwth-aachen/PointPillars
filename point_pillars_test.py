@@ -18,7 +18,7 @@ class PointPillarsTest(unittest.TestCase):
     def test_pillar_creation(self):
         pillars, indices = createPillars(self.arr, 100, 12000, 0.16, 0.16, 0, 80.64, -40.32, 40.32, -3, 1, True, 3)
 
-        assert pillars.shape == (1, 12000, 100, 7)
+        assert pillars.shape == (1, 12000, 100, 9)
         assert pillars.dtype == np.float32
         assert indices.shape == (1, 12000, 3)
         assert indices.dtype == np.int32
@@ -26,9 +26,9 @@ class PointPillarsTest(unittest.TestCase):
         session = tf.Session()
         pillars = tf.constant(pillars, dtype=tf.float32)
         indices = tf.constant(indices, dtype=tf.int32)
-        feature_map = tf.scatter_nd(indices, tf.reduce_mean(pillars, axis=2), (1, 504, 504, 7))[0]
+        feature_map = tf.scatter_nd(indices, tf.reduce_mean(pillars, axis=2), (1, 504, 504, 9))[0]
         arr, = session.run([feature_map])
-        assert (arr.shape == (504, 504, 7))
+        assert (arr.shape == (504, 504, 9))
 
     @staticmethod
     def test_pillar_target_creation():
