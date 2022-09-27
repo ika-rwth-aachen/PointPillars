@@ -431,16 +431,19 @@ pybind11::array_t<float> createPillarsTarget(
     // zone-in on potential spatial area of interest
     float objectDiameter =
         std::sqrt(std::pow(labelBox.width, 2) + std::pow(labelBox.length, 2));
-    const auto offset = static_cast<int>(
+    const auto xOffset = static_cast<int>(
         std::ceil(objectDiameter / (xStep * downscalingFactor)));
+    const auto yOffset = static_cast<int>(
+        std::ceil(objectDiameter / (yStep * downscalingFactor)));
     const auto xC = static_cast<int>(
         std::floor((labelBox.x - xMin) / (xStep * downscalingFactor)));
-    const auto xStart = clip(xC - offset, 0, xSize);
-    const auto xEnd = clip(xC + offset, 0, xSize);
     const auto yC = static_cast<int>(
         std::floor((labelBox.y - yMin) / (yStep * downscalingFactor)));
-    const auto yStart = clip(yC - offset, 0, ySize);
-    const auto yEnd = clip(yC + offset, 0, ySize);
+
+    const auto xStart = clip(xC - xOffset, 0, xSize);
+    const auto yStart = clip(yC - yOffset, 0, ySize);
+    const auto xEnd = clip(xC + xOffset, 0, xSize);
+    const auto yEnd = clip(yC + yOffset, 0, ySize);
 
     float maxIou = 0;
     BoundingBox3D bestAnchor = {};
