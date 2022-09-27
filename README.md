@@ -6,6 +6,14 @@ The `point_pillars` pip package can be installed with:
 pip install git+https://github.com/ika-rwth-aachen/PointPillars.git
 ```
 
+The training pipline can be used with conda:
+```bash
+conda env create -f environment.yml 
+conda activate pointpillars-ika
+python setup.py install
+python point_pillars_training_run.py 
+```
+
 # About Point Pillars
 Point Pillars is a very famous Deep Neural Network for 3D Object Detection for LiDAR point clouds. With the application of object detection on the LiDAR devices fitted in the self driving cars, Point Pillars focuse on fast inference ~50fps, which was magnitudes above as compared to other networks for 3D Object detection. In this repo, we are trying to develop point pillars in TensorFlow. [Here's](https://medium.com/@a_tyagi/pointpillars-3d-point-clouds-bounding-box-detection-and-tracking-pointnet-pointnet-lasernet-67e26116de5a?source=friends_link&sk=4a27f55f2cea645af39f72117984fd22) a good first post to familiarize yourself with Point Pillars. 
 

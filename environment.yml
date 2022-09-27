@@ -1,0 +1,8 @@
+name: pointpillars-ika
+dependencies:
+    - python=3.6
+    - pip:
+        - tensorflow==2.5.0
+        - tensorflow-probability==0.13.0
+        - sklearn 
+        - opencv-python
