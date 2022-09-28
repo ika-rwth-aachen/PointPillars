@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     params = Parameters()
     pillar_net = build_point_pillar_graph(params)
-    pillar_net.load_weights(os.path.join(MODEL_ROOT, "model_pretrained.h5"))
+    pillar_net.load_weights(os.path.join(MODEL_ROOT, "model.h5"))
     pillar_net.summary()
 
     data_reader = KittiDataReader()
@@ -36,14 +36,14 @@ if __name__ == "__main__":
 
     for i in range(loop_range):
         set_boxes.append(generate_bboxes_from_pred(occupancy[i], position[i], size[i], angle[i], heading[i],
-                                                   classification[i], params.anchor_dims, occ_threshold=0.6))
+                                                   classification[i], params.anchor_dims, occ_threshold=0.7))
 
         confidences.append([float(boxes.conf) for boxes in set_boxes[-1]])
         print('Scene: Box predictions with occupancy > occ_thr: ', len(set_boxes[i]))
 
 
     # NMS
-    nms_boxes = rotational_nms(set_boxes, confidences, score_threshold=0.6, iou_threshold=0.3)
+    nms_boxes = rotational_nms(set_boxes, confidences, score_threshold=0.7, iou_threshold=0.5)
 
     # Do all the further operations on predicted_boxes array, which contains the predicted bounding boxes
     gt_gen = GroundTruthGenerator(data_reader, label_files, calibration_files, network_format=False)
