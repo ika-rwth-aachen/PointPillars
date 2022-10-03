@@ -8,8 +8,8 @@ from readers import KittiDataReader
 from config import Parameters
 from network import build_point_pillar_graph
 
-DATA_ROOT = "kitti"
-MODEL_ROOT = "model"
+DATA_ROOT = "../kitti/training"
+MODEL_ROOT = "./own_model"
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"

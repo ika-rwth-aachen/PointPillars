@@ -12,8 +12,8 @@ from readers import KittiDataReader
 
 tf.get_logger().setLevel("ERROR")
 
-DATA_ROOT = "kitti"  # TODO make main arg
-MODEL_ROOT = "model"
+DATA_ROOT = "../kitti/training"  # TODO make main arg
+MODEL_ROOT = "./own_model"
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
