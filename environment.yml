@@ -1,4 +1,4 @@
-name: pointpillars-original
+name: pointpillars-ika
 
 channels:
     - conda-forge
