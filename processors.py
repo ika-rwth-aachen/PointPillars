@@ -26,8 +26,6 @@ class DataProcessor(Parameters):
         self.anchor_dims = anchor_dims[:, 0:3]
         self.anchor_z = anchor_dims[:, 3]
         self.anchor_yaw = anchor_dims[:, 4]
-        # Counts may be used to make statistic about how well the anchor boxes fit the objects
-        self.pos_cnt, self.neg_cnt = 0, 0
 
     @staticmethod
     def transform_labels_into_lidar_coordinates(labels: List[Label3D], R: np.ndarray, t: np.ndarray):
@@ -60,7 +58,8 @@ class DataProcessor(Parameters):
                                          self.y_max,
                                          self.z_min,
                                          self.z_max,
-                                         False)
+                                         False,
+                                         self.min_distance)
 
         return pillars, indices
 
@@ -87,7 +86,7 @@ class DataProcessor(Parameters):
         assert np.all(target_yaw >= -np.pi) & np.all(target_yaw <= np.pi)
         assert len(target_positions) == len(target_dimension) == len(target_yaw) == len(target_class)
 
-        target, pos, neg = createPillarsTarget(target_positions,
+        target = createPillarsTarget(target_positions,
                                                target_dimension,
                                                target_yaw,
                                                target_class,
@@ -96,6 +95,7 @@ class DataProcessor(Parameters):
                                                self.anchor_yaw,
                                                self.positive_iou_threshold,
                                                self.negative_iou_threshold,
+                                               self.angle_threshold,
                                                self.nb_classes,
                                                self.downscaling_factor,
                                                self.x_step,
@@ -107,8 +107,6 @@ class DataProcessor(Parameters):
                                                self.z_min,
                                                self.z_max,
                                                False)
-        self.pos_cnt += pos
-        self.neg_cnt += neg
 
         # return a merged target view for all objects in the ground truth and get categorical labels
         sel = select_best_anchors(target)

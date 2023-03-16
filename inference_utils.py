@@ -30,22 +30,24 @@ class BBox(tuple):
             self.cls, self.x, self.y, self.length, self.width, self.yaw)
 
 
-def rotational_nms(set_boxes, confidences, occ_threshold=0.7, nms_iou_thr=0.5):
+def rotational_nms(set_boxes, confidences, score_threshold, iou_threshold):
     """ rotational NMS
     set_boxes = size NSeqs list of size NDet lists of tuples. each tuple has the form ((pos, pos), (size, size), angle)
     confidences = size NSeqs list of lists containing NDet floats, i.e. one per detection
     """
-    assert len(set_boxes) == len(confidences) and 0 < occ_threshold < 1 and 0 < nms_iou_thr < 1
+    assert len(set_boxes) == len(confidences) and 0 < score_threshold < 1 and 0 < iou_threshold < 1
     if not len(set_boxes):
         return []
-    assert (isinstance(set_boxes[0][0][0][0], float) or isinstance(set_boxes[0][0][0][0], int)) and \
-           (isinstance(confidences[0][0], float) or isinstance(confidences[0][0], int))
     nms_boxes = []
     for boxes, confs in zip(set_boxes, confidences):
         assert len(boxes) == len(confs)
-        indices = cv.dnn.NMSBoxesRotated(boxes, confs, occ_threshold, nms_iou_thr)
-        indices = indices.reshape(len(indices)).tolist()
-        nms_boxes.append([boxes[i] for i in indices])
+        indices = cv.dnn.NMSBoxesRotated(boxes, confs, score_threshold, iou_threshold)
+
+        if len(indices) > 0:
+            indices = indices.reshape(len(indices)).tolist()
+            nms_boxes.append([boxes[i] for i in indices])
+        else:
+            nms_boxes.append([])
     return nms_boxes
 
 
@@ -78,7 +80,7 @@ def generate_bboxes_from_pred(occ, pos, siz, ang, hdg, clf, anchor_dims, occ_thr
         bb_length = np.exp(siz[value][0]) * real_anchors[i][0]
         bb_width = np.exp(siz[value][1]) * real_anchors[i][1]
         bb_height = np.exp(siz[value][2]) * real_anchors[i][2]
-        bb_yaw = -np.arcsin(np.clip(ang[value], -1, 1)) + real_anchors[i][4]
+        bb_yaw = np.arcsin(np.clip(ang[value], -1, 1)) + real_anchors[i][4]
         bb_heading = np.round(hdg[value])
         bb_cls = np.argmax(clf[value])
         bb_conf = occ[value]

@@ -1,0 +1,14 @@
+name: pointpillars-ika
+
+channels:
+    - conda-forge
+
+dependencies:
+    - python=3.7
+    - cudatoolkit=11.2
+    - cudnn=8.1
+    - pip:
+        - tensorflow-gpu==2.5.0
+        - tensorflow-probability==0.13.0
+        - sklearn 
+        - opencv-python

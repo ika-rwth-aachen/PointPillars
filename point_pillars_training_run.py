@@ -12,8 +12,8 @@ from readers import KittiDataReader
 
 tf.get_logger().setLevel("ERROR")
 
-DATA_ROOT = "../training"  # TODO make main arg
-MODEL_ROOT = "./logs"
+DATA_ROOT = "../kitti/training"  # TODO make main arg
+MODEL_ROOT = "./own_model"
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     params = Parameters()
 
     pillar_net = build_point_pillar_graph(params)
-    pillar_net.load_weights(os.path.join(MODEL_ROOT, "model.h5"))
+    #pillar_net.load_weights(os.path.join(MODEL_ROOT, "model.h5"))
 
     loss = PointPillarNetworkLoss(params)
 

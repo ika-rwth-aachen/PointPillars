@@ -13,6 +13,8 @@ class GridParameters:
     z_min = -1.0
     z_max = 3.0
 
+    min_distance = 3.0
+
     # derived parameters
     Xn_f = float(x_max - x_min) / x_step
     Yn_f = float(y_max - y_min) / y_step
@@ -46,7 +48,7 @@ class NetworkParameters:
 
     max_points_per_pillar = 100
     max_pillars = 12000
-    nb_features = 7
+    nb_features = 9
     nb_channels = 64
     downscaling_factor = 2
 
@@ -60,6 +62,8 @@ class NetworkParameters:
 
     positive_iou_threshold = 0.6
     negative_iou_threshold = 0.3
+    angle_threshold = 0.87
+
     batch_size = 4
     total_training_epochs = 160
     iters_to_decay = 101040.    # 15 * 4 * ceil(6733. / 4) --> every 15 epochs on 6733 kitti samples, cf. pillar paper
