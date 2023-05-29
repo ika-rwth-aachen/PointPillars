@@ -695,8 +695,8 @@ pybind11::array_t<float> createPillarsTargetWithVelocity(
     anchorBox.height = anchorDimensions.at(i, 2);
     anchorBox.z = anchorZHeights.at(i);
     anchorBox.yaw = anchorYaws.at(i);
-    anchorBox.x_vel = objectVelocities.at(i, 0);
-    anchorBox.y_vel = objectVelocities.at(i, 1);
+    anchorBox.x_vel = 0;
+    anchorBox.y_vel = 0;
     anchorBox.base_yaw = anchorBox.yaw;
     anchorBoxes.emplace_back(anchorBox);
 
