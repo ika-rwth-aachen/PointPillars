@@ -190,6 +190,21 @@ struct BoundingBox3D {
   float classId;
 };
 
+struct BoundingBox3DVel {
+  float x;
+  float y;
+  float z;
+  float length;
+  float width;
+  float height;
+  float yaw;
+  float x_vel;
+  float y_vel;
+  // For anchors only!
+  float base_yaw = 0.0;
+  float classId;
+};
+
 struct Point2D {
   float x;
   float y;
@@ -235,7 +250,8 @@ float rotatedY(float x, float y, float angle) {
 }
 
 // Construct bounding box in 2D, coordinates are returned in clockwise order
-Polyline2D boundingBox3DToTopDown(const BoundingBox3D& box1) {
+template<typename BoxType>
+Polyline2D boundingBox3DToTopDown(const BoxType& box1) {
   Polyline2D box;
   box.push_back(
       {rotatedX(-0.5 * box1.length, 0.5 * box1.width, box1.yaw) + box1.x,
@@ -326,7 +342,8 @@ Polyline2D sutherlandHodgmanClip(const Polyline2D& poly_points_vector,
 }
 
 // Calculates the IOU between two bounding boxes.
-float iou(const BoundingBox3D& box1, const BoundingBox3D& box2) {
+template <typename BoxType1, typename BoxType2>
+float iou(const BoxType1& box1, const BoxType2& box2) {
   const auto& box_as_vector = boundingBox3DToTopDown(box1);
   const auto& box_as_vector_2 = boundingBox3DToTopDown(box2);
   const auto& clipped_vector =
@@ -635,6 +652,310 @@ pybind11::array_t<float> createPillarsTarget(
   return tensor;
 }
 
+pybind11::array_t<float> createPillarsTargetWithVelocity(
+    const pybind11::array_t<float>& objectPositions,
+    const pybind11::array_t<float>& objectDimensions,
+    const pybind11::array_t<float>& objectYaws,
+    const pybind11::array_t<float>& objectVelocities,
+    const pybind11::array_t<int>& objectClassIds,
+    const pybind11::array_t<float>& anchorDimensions,
+    const pybind11::array_t<float>& anchorZHeights,
+    const pybind11::array_t<float>& anchorYaws, float positiveThreshold,
+    float negativeThreshold, float angle_threshold, int nbClasses,
+    int downscalingFactor, float xStep, float yStep, float xMin, float xMax,
+    float yMin, float yMax, float zMin, float zMax, bool printTime = false) {
+  std::chrono::high_resolution_clock::time_point t1 =
+      std::chrono::high_resolution_clock::now();
+
+  const auto xSize =
+      static_cast<int>(std::floor((xMax - xMin) / (xStep * downscalingFactor)));
+  const auto ySize =
+      static_cast<int>(std::floor((yMax - yMin) / (yStep * downscalingFactor)));
+
+  const int nbAnchors = anchorDimensions.shape()[0];
+
+  if (nbAnchors <= 0) {
+    throw std::runtime_error("Anchor length is zero");
+  }
+
+  const int nbObjects = objectDimensions.shape()[0];
+  if (nbObjects <= 0) {
+    throw std::runtime_error("Object length is zero");
+  }
+
+  // parse numpy arrays
+  std::vector<BoundingBox3DVel> anchorBoxes = {};
+  std::vector<float> anchorDiagonals;
+  for (int i = 0; i < nbAnchors; ++i) {
+    BoundingBox3DVel anchorBox = {};
+    anchorBox.x = 0;
+    anchorBox.y = 0;
+    anchorBox.length = anchorDimensions.at(i, 0);
+    anchorBox.width = anchorDimensions.at(i, 1);
+    anchorBox.height = anchorDimensions.at(i, 2);
+    anchorBox.z = anchorZHeights.at(i);
+    anchorBox.yaw = anchorYaws.at(i);
+    anchorBox.x_vel = objectVelocities.at(i, 0);
+    anchorBox.y_vel = objectVelocities.at(i, 1);
+    anchorBox.base_yaw = anchorBox.yaw;
+    anchorBoxes.emplace_back(anchorBox);
+
+    anchorDiagonals.emplace_back(std::sqrt(std::pow(anchorBox.width, 2) +
+                                           std::pow(anchorBox.length, 2)));
+  }
+
+  std::vector<BoundingBox3DVel> labelBoxes = {};
+  for (int i = 0; i < nbObjects; ++i) {
+    float x = objectPositions.at(i, 0);
+    float y = objectPositions.at(i, 1);
+    // Exclude equality on max values since this does not find into the
+    // discretized grid.
+    if (x < xMin | x >= xMax | y < yMin | y >= yMax) {
+      continue;
+    }
+    BoundingBox3DVel labelBox = {};
+    labelBox.x = x;
+    labelBox.y = y;
+    labelBox.z = objectPositions.at(i, 2);
+    labelBox.length = objectDimensions.at(i, 0);
+    labelBox.width = objectDimensions.at(i, 1);
+    labelBox.height = objectDimensions.at(i, 2);
+    labelBox.yaw = objectYaws.at(i);
+    labelBox.x_vel = objectVelocities.at(i, 0);
+    labelBox.y_vel = objectVelocities.at(i, 1);
+    labelBox.classId = objectClassIds.at(i);
+    labelBoxes.emplace_back(labelBox);
+  }
+
+  pybind11::array_t<float> tensor;
+  tensor.resize({nbObjects, xSize, ySize, nbAnchors, 12});
+
+  pybind11::buffer_info tensor_buffer = tensor.request();
+  float* ptr1 = (float*)tensor_buffer.ptr;
+  for (size_t idx = 0; idx < nbObjects * xSize * ySize * nbAnchors * 10;
+       idx++) {
+    ptr1[idx] = 0;
+  }
+
+  int objectCount = 0;
+  if (printTime) {
+    std::cout << "Received " << labelBoxes.size() << " objects" << std::endl;
+  }
+  for (const auto& labelBox : labelBoxes) {
+    // zone-in on potential spatial area of interest
+    float objectDiameter =
+        std::sqrt(std::pow(labelBox.width, 2) + std::pow(labelBox.length, 2));
+    const auto xOffset = static_cast<int>(
+        std::ceil(objectDiameter / (xStep * downscalingFactor)));
+    const auto yOffset = static_cast<int>(
+        std::ceil(objectDiameter / (yStep * downscalingFactor)));
+    const auto xC = static_cast<int>(
+        std::floor((labelBox.x - xMin) / (xStep * downscalingFactor)));
+    const auto yC = static_cast<int>(
+        std::floor((labelBox.y - yMin) / (yStep * downscalingFactor)));
+
+    const auto xStart = clip(xC - xOffset, 0, xSize);
+    const auto yStart = clip(yC - yOffset, 0, ySize);
+    const auto xEnd = clip(xC + xOffset, 0, xSize);
+    const auto yEnd = clip(yC + yOffset, 0, ySize);
+
+    float maxIou = 0;
+    BoundingBox3DVel bestAnchor = {};
+    int bestAnchorId = 0;
+    for (int xId = xStart; xId < xEnd; xId++) {
+      const float x = xId * xStep * downscalingFactor + xMin;
+
+      for (int yId = yStart; yId < yEnd; yId++) {
+        const float y = yId * yStep * downscalingFactor + yMin;
+        int anchorCount = 0;
+        for (auto& anchorBox : anchorBoxes) {
+          anchorBox.x = x;
+          anchorBox.y = y;
+
+          // If the angle is within the allowed threshold, rotate it.
+          const float delta_yaw_no =
+              std::fmod(labelBox.yaw - anchorBox.base_yaw, M_PI);
+          if (std::abs(delta_yaw_no) < angle_threshold ||
+              (M_PI - std::abs(delta_yaw_no)) < angle_threshold) {
+            // Override the anchor yaw to "label yaw" in order to sufficiently
+            // cover roated boxes between anchors.
+            anchorBox.yaw = labelBox.yaw;
+          } else {
+            // Otherwise make sure the anchor rotation is set to baseline yaw.
+            anchorBox.yaw = anchorBox.base_yaw;
+          }
+
+          const float iouOverlap = iou(anchorBox, labelBox);
+
+          if (maxIou < iouOverlap) {
+            maxIou = iouOverlap;
+            bestAnchor = anchorBox;
+            bestAnchorId = anchorCount;
+          }
+
+          if (iouOverlap > positiveThreshold) {
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 0) = 1;
+
+            auto diag = anchorDiagonals[anchorCount];
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 1) =
+                (labelBox.x - anchorBox.x) / diag;
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 2) =
+                (labelBox.y - anchorBox.y) / diag;
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 3) =
+                (labelBox.z - anchorBox.z) / anchorBox.height;
+
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 4) =
+                std::log(labelBox.length / anchorBox.length);
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 5) =
+                std::log(labelBox.width / anchorBox.width);
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 6) =
+                std::log(labelBox.height / anchorBox.height);
+
+            // Reduce angle to an interval of [-pi/2, pi/2] so that
+            // the sine is invertible. The angle is the delta angle
+            // of a *not oriented* box.
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 7) = std::sin(
+                std::abs(delta_yaw_no) > M_PI_2 ? -delta_yaw_no : delta_yaw_no);
+            // Encode whether the heading of the vehicle has to be
+            // flipped around. The heading must be flipped if
+            // delta angle > 90 and < 270. The angle is an oriented
+            // angle.
+            // TODO (gier) can this be easier? just take the delta_yaw_no?
+            const float delta_yaw_o =
+                std::fmod(labelBox.yaw - anchorBox.base_yaw, 2 * M_PI);
+            if (std::abs(delta_yaw_o) < M_PI_2 &&
+                std::abs(delta_yaw_o) > 1.5 * M_PI) {
+              tensor.mutable_at(objectCount, xId, yId, anchorCount, 8) = 1;
+            } else {
+              tensor.mutable_at(objectCount, xId, yId, anchorCount, 8) = 0;
+            }
+
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 9) =
+                labelBox.classId;
+
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 10) = labelBox.x_vel;
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 11) = labelBox.y_vel;
+
+          } else if (iouOverlap < negativeThreshold) {
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 0) = 0;
+          } else {
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 0) = -1;
+          }
+
+          anchorCount++;
+        }
+      }
+    }
+
+    if (maxIou < positiveThreshold) {
+      if (printTime) {
+        std::cout << "\nThere was no sufficiently overlapping anchor anywhere "
+                     "for object "
+                  << objectCount << std::endl;
+        std::cout << "Best IOU was " << maxIou
+                  << ". Adding the best location regardless of threshold."
+                  << std::endl;
+      }
+
+      const auto xId_0 = static_cast<int>(
+          std::floor((labelBox.x - xMin) / (xStep * downscalingFactor)));
+      const auto yId_0 = static_cast<int>(
+          std::floor((labelBox.y - yMin) / (yStep * downscalingFactor)));
+
+      for (int dx = -2; dx <= 2; ++dx) {
+        for (int dy = -2; dy <= 2; ++dy) {
+          // Get current x and y id from xId_0 and yId_0.
+          const auto xId = clip(xId_0 + dx, 0, xSize - 1);
+          const auto yId = clip(yId_0 + dy, 0, ySize - 1);
+
+          if (dx == 0 && dy == 0) {
+            // Set as occupied for the actual best anchor.
+
+            const float diag = std::sqrt(std::pow(bestAnchor.width, 2) +
+                                         std::pow(bestAnchor.length, 2));
+            // The best anchor can be at various locations in case the object is
+            // large and covering multiple boxes completely (e.g. bus).
+            // Assume that the best anchor is still the one with the right shape
+            // at this location.
+            const float x = xId * xStep * downscalingFactor + xMin;
+            const float y = yId * yStep * downscalingFactor + yMin;
+
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 0) = 1;
+
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 1) =
+                (labelBox.x - x) / diag;
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 2) =
+                (labelBox.y - y) / diag;
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 3) =
+                (labelBox.z - bestAnchor.z) / bestAnchor.height;
+
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 4) =
+                std::log(labelBox.length / bestAnchor.length);
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 5) =
+                std::log(labelBox.width / bestAnchor.width);
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 6) =
+                std::log(labelBox.height / bestAnchor.height);
+
+            // Reduce angle to an interval of [-pi/2, pi/2] so that
+            // the sine is invertible. The angle is the delta angle
+            // of a not oriented box.
+            const float delta_yaw_no =
+                std::fmod(labelBox.yaw - bestAnchor.base_yaw, M_PI);
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 7) =
+                std::sin(std::abs(delta_yaw_no) > M_PI_2 ? -delta_yaw_no
+                                                         : delta_yaw_no);
+            // Encode whether the heading of the vehicle has to be
+            // flipped around. The heading must be flipped if
+            // delta angle > 90 and < 270. The angle is an oriented angle.
+            const float delta_yaw_o =
+                std::fmod(labelBox.yaw - bestAnchor.base_yaw, 2 * M_PI);
+            if (std::abs(delta_yaw_o) < M_PI_2 &&
+                std::abs(delta_yaw_o) > 1.5 * M_PI) {
+              tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 8) = 1;
+            } else {
+              tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 8) = 0;
+            }
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 9) =
+                labelBox.classId;
+                
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 10) = labelBox.x_vel;
+            tensor.mutable_at(objectCount, xId, yId, anchorCount, 11) = labelBox.y_vel;
+
+          } else if (xId_0 + dx >= 0 && xId_0 + dx < xSize && yId_0 + dy >= 0 &&
+                     yId_0 + dy < ySize) {
+            // Make sure the the neighboring field would still be in the range.
+            // Otherwise the clipped value could override
+            // the positive anchor.
+
+            // Set to -1 in order to do not penalize for scores in the
+            // surrounding of the object.
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 0) = -1;
+          }
+        }
+      }
+    } else {
+      if (printTime) {
+        std::cout << "\nAt least 1 anchor was positively matched for object "
+                  << objectCount << std::endl;
+        std::cout << "Best IOU was " << maxIou << "." << std::endl;
+      }
+    }
+
+    objectCount++;
+  }
+
+  std::chrono::high_resolution_clock::time_point t2 =
+      std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+  if (printTime)
+    std::cout << "createPillarsTarget took: "
+              << static_cast<float>(duration) / 1e6 << " seconds" << std::endl;
+
+  return tensor;
+}
+
+
 PYBIND11_MODULE(point_pillars, m) {
   m.def("createPillars", &createPillars,
         "Runs function to create point pillars input tensors",
@@ -644,4 +965,6 @@ PYBIND11_MODULE(point_pillars, m) {
         pybind11::arg("printTime") = false, pybind11::arg("minDistance") = -1.0);
   m.def("createPillarsTarget", &createPillarsTarget,
         "Runs function to create point pillars output ground truth");
+  m.def("createPillarsTargetWithVelocity", &createPillarsTargetWithVelocity,
+        "Runs function to create point pillars output ground truth with velocity");
 }
