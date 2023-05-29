@@ -918,8 +918,8 @@ pybind11::array_t<float> createPillarsTargetWithVelocity(
             tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 9) =
                 labelBox.classId;
                 
-            tensor.mutable_at(objectCount, xId, yId, anchorCount, 10) = labelBox.x_vel;
-            tensor.mutable_at(objectCount, xId, yId, anchorCount, 11) = labelBox.y_vel;
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 10) = labelBox.x_vel;
+            tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 11) = labelBox.y_vel;
 
           } else if (xId_0 + dx >= 0 && xId_0 + dx < xSize && yId_0 + dy >= 0 &&
                      yId_0 + dy < ySize) {
